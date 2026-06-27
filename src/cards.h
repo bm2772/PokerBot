@@ -8,9 +8,9 @@
 // even if several files ask for it — it prevents duplicate-definition errors.
 // ============================================================================
 
-#include <array>      // std::array  — a fixed-size array (the 52-card deck)
-#include <cstdint>    // uint8_t     — a 1-byte unsigned integer (0..255)
-#include <string>     // std::string — text, for printing a card like "Ah"
+#include <array>
+#include <cstdint>
+#include <string>
 
 // ----------------------------------------------------------------------------
 // Rank and Suit as enums.
@@ -60,8 +60,7 @@ struct Card {
 
 // ----------------------------------------------------------------------------
 // The deck: exactly 52 cards. std::array<Card, 52> is a fixed-size container
-// (unlike std::vector which can grow). Fixed size is perfect here — a deck is
-// always 52 cards.
+// (unlike std::vector which can grow).
 // ----------------------------------------------------------------------------
 class Deck {
 public:
