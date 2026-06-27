@@ -1,10 +1,9 @@
 // ============================================================================
 // main.cpp — a tiny program to SEE Step 1 working.
-// `main` is where every C++ program starts running.
 // ============================================================================
 #include "cards.h"
 
-#include <iostream>   // std::cout — print to the screen
+#include <iostream>
 
 int main() {
     // 1) Show that rank/suit math works for a specific card.
