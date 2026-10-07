@@ -3,3 +3,4 @@ poker
 test_evaluator
 *.o
 .DS_Store
+test_range

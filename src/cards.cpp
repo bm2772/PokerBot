@@ -32,12 +32,20 @@ static int find_char(const char* table, int size, char c) {
     return -1;
 }
 
+int rank_from_char(char c) {
+    return find_char(RANK_CHARS, 13, static_cast<char>(std::toupper(c)));
+}
+
+char rank_to_char(int rank) {
+    return RANK_CHARS[rank];
+}
+
 Card parse_card(const std::string& text) {
     if (text.size() != 2) {
         throw std::invalid_argument("card must be 2 characters, got '" + text + "'");
     }
     // Normalize case so "ah", "AH", "Ah" all work: ranks upper, suits lower.
-    int r = find_char(RANK_CHARS, 13, static_cast<char>(std::toupper(text[0])));
+    int r = rank_from_char(text[0]);
     int s = find_char(SUIT_CHARS, 4,  static_cast<char>(std::tolower(text[1])));
     if (r < 0 || s < 0) {
         throw std::invalid_argument("not a valid card: '" + text + "'");

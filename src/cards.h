@@ -70,6 +70,12 @@ struct Card {
 Card parse_card(const std::string& text);
 std::vector<Card> parse_cards(const std::string& text);
 
+// Rank character <-> rank number: '2' <-> 0 ... 'A' <-> 12.
+// rank_from_char returns -1 for an invalid character (case-insensitive).
+// The range parser in Step 5 uses these for notation like "AKs".
+int  rank_from_char(char c);
+char rank_to_char(int rank);
+
 // Join cards for printing: {Ah, Kd} -> "Ah Kd".
 std::string cards_to_string(const std::vector<Card>& cards);
 

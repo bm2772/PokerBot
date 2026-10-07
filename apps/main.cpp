@@ -1,9 +1,11 @@
 // ============================================================================
-// main.cpp — demo of Steps 2-4, plus a small command-line tool.
+// main.cpp — demo of Steps 2-5, plus a small command-line tool.
 //
 //   ./poker                                  run the guided demo
-//   ./poker equity <hero> <villain> [board]  exact equity for your own spot
+//   ./poker equity <hero> <villain> [board]  equity for your own spot
 //        e.g. ./poker equity AhKh QsQd 7h2h9c
+//             ./poker equity AhQc "TT+, AK"          (hand vs range)
+//             ./poker equity "22+" "TT+, AK" Kh7d2c   (range vs range)
 //
 // `argc` = how many words were typed (including the program name), and
 // `argv` = the words themselves. Same as in C.
@@ -12,6 +14,7 @@
 #include "equity.h"
 #include "evaluator.h"
 #include "ev.h"
+#include "range.h"
 
 #include <chrono>
 #include <cmath>
@@ -117,24 +120,116 @@ static void demo_ev() {
 }
 
 // ---------------------------------------------------------------------------
+static void demo_ranges() {
+    std::printf("=== Step 5: Ranges ==============================================\n");
+
+    // 1. Counting combos: how big is a range, really?
+    std::printf("  How many combos is each range? (out of 1326 starting hands)\n");
+    for (const char* text : {"AA", "AKs", "AKo", "TT+, AK", "22+, A2s+, KTs+, QJs, ATo+, KJo+"}) {
+        Range r = Range::parse(text);
+        std::printf("    %-34s %4zu combos  = %4.1f%% of all hands\n",
+                    text, r.size(), 100.0 * r.size() / 1326);
+    }
+
+    // 2. Blockers: cards we can see remove combos from their range.
+    Range strong = Range::parse("AA, KK, AK");
+    std::vector<Card> ace_board = parse_cards("Ah 7c 2d");
+    std::printf("\n  Blockers: villain range \"AA, KK, AK\" has %zu combos.\n", strong.size());
+    std::printf("  On a board of %s only %zu remain: the Ah removed half the AA\n"
+                "  combos and a quarter of the AK combos, but none of the KK.\n",
+                cards_to_string(ace_board).c_str(), strong.live_combos(ace_board).size());
+
+    // 3. The same hand, the same bet: the right answer depends on their RANGE.
+    std::vector<Card> hero = parse_cards("AhQc");
+    std::vector<Card> no_board;
+    double pot = 21, to_call = 19;   // villain shoves 20bb, we're in the BB with 1bb in
+    double need = required_equity(pot, to_call);
+    std::printf("\n  Villain shoves 20bb preflop. You hold %s in the big blind:\n",
+                cards_to_string(hero).c_str());
+    std::printf("  pot %.0f, to call %.0f -> you need %.1f%% equity.\n", pot, to_call, 100 * need);
+
+    struct Villain { const char* label; const char* range; };
+    for (Villain v : {Villain{"tight shover", "TT+, AK"},
+                      Villain{"loose shover", "22+, A2+, KT+, QJ"}}) {
+        Range r = Range::parse(v.range);
+        EquityResult e = equity_vs_range_monte_carlo(hero, r, no_board, 400000);
+        double ev = ev_call(e.equity(), pot, to_call);
+        std::printf("    vs %-13s %-20s equity %5.2f%% (+/-%.2f)  EV(call) %+5.2f bb -> %s\n",
+                    v.label, v.range, 100 * e.equity(), 100 * e.std_error(), ev,
+                    ev > ev_fold() ? "CALL" : "FOLD");
+    }
+
+    // 4. Range vs range: neither side's cards are known.
+    EquityResult rr = range_vs_range_monte_carlo(Range::parse("22+, A2+, KT+, QJ"),
+                                                 Range::parse("TT+, AK"), no_board, 400000);
+    std::printf("\n  Range vs range: loose shove range vs a \"TT+, AK\" calling range:\n");
+    std::printf("    shover's equity %.2f%% (+/-%.2f) when called\n\n",
+                100 * rr.equity(), 100 * rr.std_error());
+}
+
+// ---------------------------------------------------------------------------
+// n choose k: how many ways to pick k cards from n.
+static long long choose(int n, int k) {
+    long long result = 1;
+    for (int i = 1; i <= k; ++i) result = result * (n - k + i) / i;
+    return result;
+}
+
+// Both players' text may be an exact hand ("AhKh") or a range ("TT+, AK").
+// The command picks a method by COST: if evaluating every combo against every
+// run-out is affordable, it does that exactly; otherwise it samples.
 static int run_equity_command(int argc, char** argv) {
     if (argc < 4) {
-        std::printf("usage: %s equity <hero> <villain> [board]\n", argv[0]);
+        std::printf("usage: %s equity <hero> <villain> [board]\n"
+                    "  hero/villain: a hand like AhKh, or a range in quotes like \"TT+, AK\"\n",
+                    argv[0]);
         return 1;
     }
-    std::vector<Card> hero    = parse_cards(argv[2]);
-    std::vector<Card> villain = parse_cards(argv[3]);
-    std::vector<Card> board   = argc >= 5 ? parse_cards(argv[4]) : std::vector<Card>{};
+    std::vector<Card> board = argc >= 5 ? parse_cards(argv[4]) : std::vector<Card>{};
+    Range villain = Range::parse(argv[3]);   // a single hand is just a 1-combo range
 
-    EquityResult r = equity_exact(hero, villain, board);
-    std::printf("Board: %s  (%lld possible run-outs)\n",
-                board.empty() ? "(preflop)" : cards_to_string(board).c_str(), r.trials);
-    print_equity(cards_to_string(hero).c_str(), r);
+    // Is hero an exact hand? Try reading it as cards; a range like "AK" won't parse.
+    std::vector<Card> hero;
+    try {
+        hero = parse_cards(argv[2]);
+    } catch (const std::invalid_argument&) {
+        hero.clear();
+    }
+
+    const long long budget = 30000000;      // ~1 second of showdowns
+    const long long samples = 2000000;
+    EquityResult r;
+    const char* method;
+    if (hero.size() == 2) {
+        std::vector<Card> dead = hero;
+        dead.insert(dead.end(), board.begin(), board.end());
+        long long live = static_cast<long long>(villain.live_combos(dead).size());
+        int unseen = 52 - 4 - static_cast<int>(board.size());
+        long long cost = live * choose(unseen, 5 - static_cast<int>(board.size()));
+        if (cost <= budget) {
+            r = equity_vs_range_exact(hero, villain, board);
+            method = "exact";
+        } else {
+            r = equity_vs_range_monte_carlo(hero, villain, board, samples);
+            method = "Monte Carlo";
+        }
+        std::printf("Villain range: %zu combos, %lld live after card removal\n", villain.size(), live);
+    } else {
+        r = range_vs_range_monte_carlo(Range::parse(argv[2]), villain, board, samples);
+        method = "Monte Carlo";
+    }
+
+    std::printf("Board: %s   method: %s (%lld showdowns)",
+                board.empty() ? "(preflop)" : cards_to_string(board).c_str(), method, r.trials);
+    if (std::string(method) != "exact") std::printf(", +/- %.2f%%", 100 * r.std_error());
+    std::printf("\n");
+
+    print_equity("Hero", r);
     // Villain's numbers are hero's mirrored: villain wins when hero loses.
     EquityResult v = r;
     v.win = r.lose;
     v.lose = r.win;
-    print_equity(cards_to_string(villain).c_str(), v);
+    print_equity("Villain", v);
     return 0;
 }
 
@@ -148,6 +243,7 @@ int main(int argc, char** argv) {
         demo_evaluator();
         demo_equity();
         demo_ev();
+        demo_ranges();
     } catch (const std::exception& e) {
         std::printf("error: %s\n", e.what());
         return 1;

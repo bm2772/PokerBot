@@ -14,6 +14,7 @@
 // ============================================================================
 
 #include "cards.h"
+#include "range.h"
 
 #include <cstdint>
 #include <vector>
@@ -43,3 +44,35 @@ EquityResult equity_monte_carlo(const std::vector<Card>& hero,
                                 const std::vector<Card>& board,
                                 long long iterations,
                                 uint64_t seed = 12345);   // fixed seed = repeatable results
+
+// ============================================================================
+// Step 5: equity against RANGES.
+// ----------------------------------------------------------------------------
+// Only "live" combos count: any combo using a card in hero's hand or on the
+// board is impossible and gets skipped (card removal). Each live combo counts
+// in proportion to its weight. All three throw std::invalid_argument if no
+// combo is live.
+// ============================================================================
+
+// Hero's exact hand vs a range: the weighted average of equity_exact against
+// every live combo. Fast on the flop or later; preflop each combo costs ~1.7M
+// boards, so prefer Monte Carlo there for wide ranges.
+EquityResult equity_vs_range_exact(const std::vector<Card>& hero,
+                                   const Range& villain,
+                                   const std::vector<Card>& board);
+
+// Same question by sampling: each trial draws a villain combo (weighted),
+// then a random board.
+EquityResult equity_vs_range_monte_carlo(const std::vector<Card>& hero,
+                                         const Range& villain,
+                                         const std::vector<Card>& board,
+                                         long long iterations,
+                                         uint64_t seed = 12345);
+
+// Range vs range, from range `a`'s point of view. Each trial draws one combo
+// from each range; if they share a card, both are redrawn.
+EquityResult range_vs_range_monte_carlo(const Range& a,
+                                        const Range& b,
+                                        const std::vector<Card>& board,
+                                        long long iterations,
+                                        uint64_t seed = 12345);
