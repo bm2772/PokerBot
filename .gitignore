@@ -1,0 +1,5 @@
+# Compiled programs (rebuild with `make`)
+poker
+test_evaluator
+*.o
+.DS_Store

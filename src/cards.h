@@ -11,6 +11,7 @@
 #include <array>      // std::array  — a fixed-size array (the 52-card deck)
 #include <cstdint>    // uint8_t     — a 1-byte unsigned integer (0..255)
 #include <string>     // std::string — text, for printing a card like "Ah"
+#include <vector>     // std::vector — a growable array (for lists of cards)
 
 // ----------------------------------------------------------------------------
 // Rank and Suit as enums.
@@ -57,6 +58,20 @@ struct Card {
     // Human-readable form, e.g. "Ah" (ace of hearts), "Tc" (ten of clubs).
     std::string to_string() const;
 };
+
+// ----------------------------------------------------------------------------
+// Parsing: text -> cards.
+//   parse_card("Ah")        -> Ace of hearts
+//   parse_cards("AhKd 7c")  -> {Ah, Kd, 7c}   (spaces/commas are ignored)
+// Ranks: 2-9, T, J, Q, K, A.  Suits: c, d, h, s.  Case doesn't matter.
+// Bad input throws std::invalid_argument (C++'s way of reporting an error
+// that the caller can "catch" — similar to raising ValueError in Python).
+// ----------------------------------------------------------------------------
+Card parse_card(const std::string& text);
+std::vector<Card> parse_cards(const std::string& text);
+
+// Join cards for printing: {Ah, Kd} -> "Ah Kd".
+std::string cards_to_string(const std::vector<Card>& cards);
 
 // ----------------------------------------------------------------------------
 // The deck: exactly 52 cards. std::array<Card, 52> is a fixed-size container
